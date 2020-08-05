@@ -1,3 +1,13 @@
+#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
+#AutoIt3Wrapper_Outfile=work_time_minder.exe
+#AutoIt3Wrapper_UseX64=n
+#AutoIt3Wrapper_Res_Fileversion=0.0.0.1
+#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
+
+;work time Minder
+;by david smyth (hypov8)
+;use freely
+
 #include <ButtonConstants.au3>
 #include <GUIConstantsEx.au3>
 #include <GUIListBox.au3>
@@ -23,14 +33,16 @@ Global $Group3 = GUICtrlCreateGroup("Log", 4, 168, 317, 97)
 Global $List1 = GUICtrlCreateList("", 12, 184, 301, 71, BitOR($GUI_SS_DEFAULT_LIST,$WS_HSCROLL))
 GUICtrlCreateGroup("", -99, -99, 1, 1)
 Global $Button1 = GUICtrlCreateButton("Info", 240, 16, 73, 33)
+GUICtrlSetOnEvent($Button1, "Button1Click")
 Global $Button2 = GUICtrlCreateButton("Pause", 240, 88, 77, 33)
+GUICtrlSetOnEvent($Button2, "Button2Click")
 Global $Button3 = GUICtrlCreateButton("Resume", 240, 128, 77, 33)
+GUICtrlSetOnEvent($Button3, "Button3Click")
 GUISetState(@SW_SHOW)
 #EndRegion ### END Koda GUI section ###
 
-;work time Minder
-;by david smyth (hypov8)
-;use freely
+
+
 
 #include <Timers.au3>
 #include <Date.au3>
@@ -43,7 +55,8 @@ Global $iWeeklyTimeMin
 Global $iMinutes, $iHours, $iWeekDay, $iYearDay, $iDate, $iMonth, $iYear
 Global $iProgStartTime = TimerInit()
 Global $powerSaverStarted=False
-Global Const $sFileName = @TempDir & "\work_time_active.txt"
+Global $isPaused = False
+Global Const $sFileName = @TempDir & "\work_time_state.txt"
 Global Const $sFileNameLog = @TempDir & "\work_time_log.txt"
 
 ;Global Const $WM_POWERBROADCAST =   0x218
@@ -146,17 +159,17 @@ Func UpdateTimmers()
 	Local $g_iHour, $g_iMins
 	local $iMin_Counter = Int((TimerDiff($iProgStartTime)/1000)/60) ; get seconds
 
-	If $iYearDay = int(@YDAY) Then ;==> check if we are on the same day. midnight?
+	If ($iYearDay = int(@YDAY)) Then ;==> check if we are on the same day. midnight?
 		Local $ScreenSaverActive[4]
 		$ScreenSaverActive[3] = 0
 
-		If $isPC_inUse = True Then
+		If ($isPC_inUse = True) Then
 			$ScreenSaverActive = DllCall("user32.dll","bool","SystemParametersInfoA", "uint", Dec('0072', 1),"uint", 0,"bool*", 0,"uint", 0)
 		EndIf
 
-		If $powerSaverStarted = False Then
+		If ($powerSaverStarted = False) Then
 			$isTimeUpdateRequired = True
-			if $ScreenSaverActive[3] = 1 or $isPC_inUse = False Then
+			if ($ScreenSaverActive[3] = 1) or ($isPC_inUse = False) or ($isPaused = True) Then
 				$powerSaverStarted = True
 				$iProgStartTime = TimerInit() ; zero counter
 				$iDailyTimeMin += $iMin_Counter ; add time since last reset
@@ -173,8 +186,9 @@ Func UpdateTimmers()
 				ConsoleWrite("> screen not in use"&@CRLF)
 			EndIf
 		Else ;==> $powerSaverStarted = True
-			If $ScreenSaverActive[3] = 0 And $isPC_inUse = True Then
+			If ($ScreenSaverActive[3] = 0) And ($isPC_inUse = True) And ($isPaused = False) Then
 				$powerSaverStarted = False
+				$isTimeUpdateRequired = True
 				$iProgStartTime = TimerInit() ; zero counter
 				WriteToLog(StringFormat( "Resume Work Time..  (D=%.1fh W=%.1fh)", ($iDailyTimeMin/60), ($iWeeklyTimeMin/60)))
 			EndIf
@@ -207,29 +221,31 @@ Func UpdateTimmers()
 		GUICtrlSetData($Label1, StringFormat("%02i:%02i", $g_iHour_d, $g_iMins_d))
 		GUICtrlSetData($Label2, StringFormat("%02i:%02i", $g_iHour_w, $g_iMins_w))
 
-		; set progressbar percent/color. red if +7.6 hours
-		Local $WorkDayTime = $iDailyTimeMin + $iMin_Counter
-		if  $WorkDayTime > (7.6*60) Then
-			GUICtrlSetData($Progress1, 100)
-			GUICtrlSetColor($Progress1, 0xFF0000) ;red
-			GUICtrlSetColor($Label1, 0xFF0000) ;red
-		Else
-			GUICtrlSetData($Progress1, int(100.0/((7.6*60)/ $WorkDayTime)))
-			GUICtrlSetColor($Progress1, 0x0066ff) ; blue
-			GUICtrlSetColor($Label1, 0x000000) ;black
-		EndIf
+		if ($isPaused = False) Then
+			; set progressbar percent/color. red if +7.6 hours
+			Local $WorkDayTime = $iDailyTimeMin + $iMin_Counter
 
+			if  $WorkDayTime > (7.6*60) Then
+				GUICtrlSetData($Progress1, 100)
+				GUICtrlSetColor($Progress1, 0xFF0000) ;red
+				GUICtrlSetColor($Label1, 0xFF0000) ;red
+			Else
+				GUICtrlSetData($Progress1, int(100.0/((7.6*60)/ $WorkDayTime)))
+				GUICtrlSetColor($Progress1, 0x009900) ; green
+				GUICtrlSetColor($Label1, 0x000000) ;black
+			EndIf
 
-		; set progressbar percent/color. red if +38 hours
-		Local $WorkWeekTime = $iWeeklyTimeMin + $iMin_Counter
-		if $WorkWeekTime > (38*60) Then
-			GUICtrlSetData($Progress2, 100)
-			GUICtrlSetColor($Progress2, 0xFF0000) ;red
-			GUICtrlSetColor($Label2, 0xFF0000) ;red
-		Else
-			GUICtrlSetData($Progress2, int(100.0/((38*60)/ $WorkWeekTime)))
-			GUICtrlSetColor($Progress2, 0x0066ff) ;
-			GUICtrlSetColor($Label2, 0x000000) ;black
+			; set progressbar percent/color. red if +38 hours
+			Local $WorkWeekTime = $iWeeklyTimeMin + $iMin_Counter
+			if $WorkWeekTime > (38*60) Then
+				GUICtrlSetData($Progress2, 100)
+				GUICtrlSetColor($Progress2, 0xFF0000) ;red
+				GUICtrlSetColor($Label2, 0xFF0000) ;red
+			Else
+				GUICtrlSetData($Progress2, int(100.0/((38*60)/ $WorkWeekTime)))
+				GUICtrlSetColor($Progress2, 0x009900) ;
+				GUICtrlSetColor($Label2, 0x000000) ;black
+			EndIf
 		EndIf
 	EndIf
 
@@ -304,11 +320,11 @@ Func Write_Session_ToTempFile()
 	$iWeeklyTimeMin+= $iMin_Counter ; add time since last reset
 
 	; build array
-	$aArray[0] = $iDailyTimeMin		; daily min
-	$aArray[1] = $iWeeklyTimeMin	; weekly min
-	$aArray[2] = $dayShifted	; 1-7 day (stored mon -> sat)
-	$aArray[3] = @YDAY			; 1-366 day
-	$aArray[4] = @YEAR			; year 2020
+	$aArray[0] = $iDailyTimeMin & @TAB& "[daily min]"		; daily min
+	$aArray[1] = $iWeeklyTimeMin & @TAB& "[weekly min]"	; weekly min
+	$aArray[2] = $dayShifted & @TAB& "[week day 1-7]"	; 1-7 day (stored mon -> sat)
+	$aArray[3] = @YDAY & @TAB& "[yearday 365 ]"			; 1-366 day
+	$aArray[4] = @YEAR & @TAB& "[year xxxx]"			; year 2020
 
 	; handle file
 	if FileExists($sFileName) = 0 Then
@@ -316,7 +332,7 @@ Func Write_Session_ToTempFile()
 	EndIf
 
 	Local $hFile = FileOpen($sFileName, 2)
-	If $hFile = -1 Then
+	If ($hFile = -1) Then
 		MsgBox(0,"File Error", "Can not save session to temp folder",5,$Form2)
 	Else
 		_FileWriteFromArray($sFileName, $aArray)
@@ -361,7 +377,39 @@ Func CLOSE_UI()
 	Exit
 EndFunc
 
+#Region ;==>buttons
+Func Button1Click() ;info
+	MsgBox(0,"About", 	"Manage work time." & @CRLF & _
+						"" & @CRLF & _
+						"A work day is 7.6 hours, reset at midnight." & @CRLF & _
+						"A work week is 38 hours, reset sunday at midnight" & @CRLF  & _
+						"Progress will be red if you worked to long." & @CRLF  & _
+						"" & @CRLF & _
+						"If the pc enters a low power state, the time since last mouse/kb use will be deducted from working time." & @CRLF  & _
+						"" & @CRLF  & _
+						"Program stores a 'log' and 'state' values in users temp folder." & @CRLF  & _
+						"" & @CRLF  & _
+						"" & @CRLF  & _
+						"", 0, $Form2)
 
+EndFunc
+
+Func Button2Click() ;pause
+	GUICtrlSetData($Progress1, 100)
+	GUICtrlSetColor($Progress1, 0x999999)
+	GUICtrlSetColor($Label1, 0x9999999)
+	GUICtrlSetData($Progress2, 100)
+	GUICtrlSetColor($Progress2, 0x9999999)
+	GUICtrlSetColor($Label2, 0x9999999)
+	$isPaused = True
+	UpdateTimmers()
+EndFunc
+
+Func Button3Click() ;resume
+	$isPaused = False
+	UpdateTimmers()
+EndFunc
+#EndRegion
 
 While 1
 	UpdateTimmers()
