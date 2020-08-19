@@ -1,7 +1,8 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
+#AutoIt3Wrapper_Icon=D:\_code_\icon\star_icon.ico
 #AutoIt3Wrapper_Outfile=work_time_minder.exe
 #AutoIt3Wrapper_UseX64=n
-#AutoIt3Wrapper_Res_Fileversion=0.0.0.1
+#AutoIt3Wrapper_Res_Fileversion=0.0.0.3
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
 ;work time Minder
@@ -48,6 +49,9 @@ GUISetState(@SW_SHOW)
 #include <Date.au3>
 #include <WinAPISys.au3>
 #include <File.au3>
+Opt("TrayMenuMode", 3)
+Opt("TrayOnEventMode", 1)
+
 
 #Region ;==> global
 Global $iDailyTimeMin
@@ -56,6 +60,7 @@ Global $iMinutes, $iHours, $iWeekDay, $iYearDay, $iDate, $iMonth, $iYear
 Global $iProgStartTime = TimerInit()
 Global $powerSaverStarted=False
 Global $isPaused = False
+Global $windowStateMin = False
 Global Const $sFileName = @TempDir & "\work_time_state.txt"
 Global Const $sFileNameLog = @TempDir & "\work_time_log.txt"
 
@@ -83,10 +88,11 @@ Global $isPC_inUse = True
 Global $powerID = _WinAPI_RegisterPowerSettingNotification($Form2, $GUID_MONITOR_POWER_ON)
 
 WriteToLog("Program start")
-
+GUICtrlSetData($Progress1, 0)
 GUISetOnEvent($GUI_EVENT_CLOSE, "CLOSE_UI")
 GUIRegisterMsg($WM_POWERBROADCAST, "_Power_Event")
-GUICtrlSetData($Progress1, 0)
+TraySetOnEvent(-8, "TrayWindow_reSize" ) ;$TRAY_EVENT_PRIMARYUP
+TraySetOnEvent(-10, "TrayWindow_reSize" ) ;$TRAY_EVENT_SECONDARYUP
 
 Read_Session_FromTempFile()
 #EndRegion ;==> global
@@ -154,7 +160,7 @@ EndFunc
 
 
 ;ToDo check locked
-Func UpdateTimmers()
+Func UpdateTimmers($isForcedUpdate = False)
 	local $isTimeUpdateRequired = False
 	Local $g_iHour, $g_iMins
 	local $iMin_Counter = Int((TimerDiff($iProgStartTime)/1000)/60) ; get seconds
@@ -188,7 +194,9 @@ Func UpdateTimmers()
 		Else ;==> $powerSaverStarted = True
 			If ($ScreenSaverActive[3] = 0) And ($isPC_inUse = True) And ($isPaused = False) Then
 				$powerSaverStarted = False
-				$isTimeUpdateRequired = True
+				if ($isForcedUpdate = True) Then
+					$isTimeUpdateRequired = True
+				EndIf
 				$iProgStartTime = TimerInit() ; zero counter
 				WriteToLog(StringFormat( "Resume Work Time..  (D=%.1fh W=%.1fh)", ($iDailyTimeMin/60), ($iWeeklyTimeMin/60)))
 			EndIf
@@ -224,11 +232,13 @@ Func UpdateTimmers()
 		if ($isPaused = False) Then
 			; set progressbar percent/color. red if +7.6 hours
 			Local $WorkDayTime = $iDailyTimeMin + $iMin_Counter
+			Local $isTrayTimeRed = False
 
 			if  $WorkDayTime > (7.6*60) Then
 				GUICtrlSetData($Progress1, 100)
 				GUICtrlSetColor($Progress1, 0xFF0000) ;red
 				GUICtrlSetColor($Label1, 0xFF0000) ;red
+				$isTrayTimeRed = True
 			Else
 				GUICtrlSetData($Progress1, int(100.0/((7.6*60)/ $WorkDayTime)))
 				GUICtrlSetColor($Progress1, 0x009900) ; green
@@ -241,14 +251,39 @@ Func UpdateTimmers()
 				GUICtrlSetData($Progress2, 100)
 				GUICtrlSetColor($Progress2, 0xFF0000) ;red
 				GUICtrlSetColor($Label2, 0xFF0000) ;red
+				$isTrayTimeRed = True
 			Else
 				GUICtrlSetData($Progress2, int(100.0/((38*60)/ $WorkWeekTime)))
 				GUICtrlSetColor($Progress2, 0x009900) ;
 				GUICtrlSetColor($Label2, 0x000000) ;black
 			EndIf
+
+			if ($isTrayTimeRed = True) Then
+				TraySetIcon( "stop")
+			Else
+				TraySetIcon()
+			EndIf
 		EndIf
+
+		TraySetToolTip(StringFormat( "Daily: %.1fh\nWeekly: %.1fh", (($iDailyTimeMin+ $iMin_Counter)/60), _
+																	 (($iWeeklyTimeMin+ $iMin_Counter)/60)))
 	EndIf
 
+EndFunc
+
+
+
+
+Func TrayWindow_reSize()
+	If ($windowStateMin = True) Then
+		GUISetState(@SW_SHOW)
+		GUISetState(@SW_RESTORE)
+		$windowStateMin = False
+	Else
+		GUISetState(@SW_MINIMIZE)
+		GUISetState(@SW_HIDE)
+		$windowStateMin = True
+	EndIf
 EndFunc
 
 
@@ -272,23 +307,23 @@ Func Read_Session_FromTempFile()
 			Local $line_365d = int($aArray[3])	; 1-366 day
 			Local $line_year = int($aArray[4])	; year 2020
 
-			ConsoleWrite("$line_year=" &$line_year& "+year="&int(@YEAR)& @CRLF)
 			;test year
 			if $line_year = int(@YEAR) Then
-				ConsoleWrite("ok1"& @CRLF)
-				$iYearDay = $line_365d
+				$iYearDay = $line_365d ;set global value
+				ConsoleWrite("Same Year. YearDay=" &$iYearDay&@CRLF)
+
 
 				;get daily hour/min
 				If $line_365d = int(@YDAY) Then
-					$iDailyTimeMin = $line_dMin
-					ConsoleWrite("$iDailyTimeMin=" &$iDailyTimeMin&@CRLF)
+					$iDailyTimeMin = $line_dMin ;set global value
+					ConsoleWrite("Same Day. DailyTimeMin=" &$iDailyTimeMin&@CRLF)
 				EndIf
 
 				;get weekly hour/min
 				local $iDaysSinceRun = int(@YDAY) - $line_365d
 				if $iDaysSinceRun < 7 and ($iDaysSinceRun + ($line_7day - 1)) < 7 Then
-					$iWeeklyTimeMin = $line_wMin
-					ConsoleWrite("$iWeeklyTimeMin=" &$iWeeklyTimeMin&@CRLF)
+					$iWeeklyTimeMin = $line_wMin ;set global value
+					ConsoleWrite("Same Week. WeeklyTimeMin=" &$iWeeklyTimeMin&@CRLF)
 				EndIf
 			EndIf
 
@@ -383,7 +418,7 @@ Func Button1Click() ;info
 						"" & @CRLF & _
 						"A work day is 7.6 hours, reset at midnight." & @CRLF & _
 						"A work week is 38 hours, reset sunday at midnight" & @CRLF  & _
-						"Progress will be red if you worked to long." & @CRLF  & _
+						"Progress bar will be red if you worked to long." & @CRLF  & _
 						"" & @CRLF & _
 						"If the pc enters a low power state, the time since last mouse/kb use will be deducted from working time." & @CRLF  & _
 						"" & @CRLF  & _
@@ -407,7 +442,7 @@ EndFunc
 
 Func Button3Click() ;resume
 	$isPaused = False
-	UpdateTimmers()
+	UpdateTimmers( True)
 EndFunc
 #EndRegion
 
