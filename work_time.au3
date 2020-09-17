@@ -2,12 +2,14 @@
 #AutoIt3Wrapper_Icon=D:\_code_\icon\star_icon.ico
 #AutoIt3Wrapper_Outfile=work_time_minder.exe
 #AutoIt3Wrapper_UseX64=n
-#AutoIt3Wrapper_Res_Fileversion=0.0.0.3
+#AutoIt3Wrapper_Res_Description=work time minder
+#AutoIt3Wrapper_Res_Fileversion=0.0.0.4
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
-;work time Minder
+;work time minder
 ;by david smyth (hypov8)
 ;use freely
+
 
 #include <ButtonConstants.au3>
 #include <GUIConstantsEx.au3>
@@ -20,15 +22,15 @@ Opt("GUIOnEventMode", 1)
 Global $Form2 = GUICreate("Work Time Minder", 327, 272, -1, -1)
 Global $Group1 = GUICtrlCreateGroup("Time (H:M)", 4, 8, 225, 153)
 Global $Label1 = GUICtrlCreateLabel("00:00", 133, 26, 85, 32)
-GUICtrlSetFont($Label1, 25, 400, 0, "MS Sans Serif")
-Global $Progress1 = GUICtrlCreateProgress(12, 63, 205, 21)
+GUICtrlSetFont($Label1, 24, 400, 0, "MS Sans Serif")
 Global $Label2 = GUICtrlCreateLabel("00:00", 133, 94, 85, 32)
 GUICtrlSetFont($Label2, 24, 400, 0, "MS Sans Serif")
-Global $Progress2 = GUICtrlCreateProgress(12, 131, 205, 21)
 Global $Label3 = GUICtrlCreateLabel("Day: ", 12, 30, 91, 29)
 GUICtrlSetFont($Label3, 18, 400, 0, "MS Sans Serif")
-Global $Label5 = GUICtrlCreateLabel("Week: ", 12, 98, 91, 29)
-GUICtrlSetFont($Label5, 18, 400, 0, "MS Sans Serif")
+Global $Label4 = GUICtrlCreateLabel("Week: ", 12, 98, 91, 29)
+GUICtrlSetFont($Label4, 18, 400, 0, "MS Sans Serif")
+Global $Progress1 = GUICtrlCreateProgress(12, 63, 205, 21)
+Global $Progress2 = GUICtrlCreateProgress(12, 131, 205, 21)
 GUICtrlCreateGroup("", -99, -99, 1, 1)
 Global $Group3 = GUICtrlCreateGroup("Log", 4, 168, 317, 97)
 Global $List1 = GUICtrlCreateList("", 12, 184, 301, 71, BitOR($GUI_SS_DEFAULT_LIST,$WS_HSCROLL))
@@ -45,15 +47,15 @@ GUISetState(@SW_SHOW)
 
 
 
+#Region ;==> global
 #include <Timers.au3>
 #include <Date.au3>
 #include <WinAPISys.au3>
 #include <File.au3>
+#include <GDIPlus.au3>
 Opt("TrayMenuMode", 3)
 Opt("TrayOnEventMode", 1)
 
-
-#Region ;==> global
 Global $iDailyTimeMin
 Global $iWeeklyTimeMin
 Global $iMinutes, $iHours, $iWeekDay, $iYearDay, $iDate, $iMonth, $iYear
@@ -93,6 +95,15 @@ GUISetOnEvent($GUI_EVENT_CLOSE, "CLOSE_UI")
 GUIRegisterMsg($WM_POWERBROADCAST, "_Power_Event")
 TraySetOnEvent(-8, "TrayWindow_reSize" ) ;$TRAY_EVENT_PRIMARYUP
 TraySetOnEvent(-10, "TrayWindow_reSize" ) ;$TRAY_EVENT_SECONDARYUP
+
+Global $aDPI = _GDIPlus_GraphicsGetDPIRatio()
+ConsoleWrite("!GIU DPI= "&$aDPI[0] & @CRLF)
+
+GUISetFont(8 * $aDPI[0])
+GUICtrlSetFont($Label1, 24*$aDPI[0])
+GUICtrlSetFont($Label2, 24*$aDPI[0])
+GUICtrlSetFont($Label3, 18*$aDPI[0])
+GUICtrlSetFont($Label4, 18*$aDPI[0])
 
 Read_Session_FromTempFile()
 #EndRegion ;==> global
@@ -294,43 +305,46 @@ Func Read_Session_FromTempFile()
 	$iDailyTimeMin = 0
 	$iWeeklyTimeMin = 0
 
-	Local $aArray = FileReadToArray($sFileName)
-	if @error Then
-		MsgBox(0,"File Error", "Can not read temp session file",5,$Form2)
-		ConsoleWrite("!logFile ERROR" &@CRLF)
-	Else
-		If (UBound($aArray) >= 5) Then
-			Local $line_dMin = int($aArray[0])	; daily min
-			Local $line_wMin = int($aArray[1])	; weekly min
+	If FileExists($sFileName) Then
+		Local $aArray = FileReadToArray($sFileName)
 
-			Local $line_7day = int($aArray[2])	; 1-7 day (stored sun -> sat)
-			Local $line_365d = int($aArray[3])	; 1-366 day
-			Local $line_year = int($aArray[4])	; year 2020
-
-			;test year
-			if $line_year = int(@YEAR) Then
-				$iYearDay = $line_365d ;set global value
-				ConsoleWrite("Same Year. YearDay=" &$iYearDay&@CRLF)
-
-
-				;get daily hour/min
-				If $line_365d = int(@YDAY) Then
-					$iDailyTimeMin = $line_dMin ;set global value
-					ConsoleWrite("Same Day. DailyTimeMin=" &$iDailyTimeMin&@CRLF)
-				EndIf
-
-				;get weekly hour/min
-				local $iDaysSinceRun = int(@YDAY) - $line_365d
-				if $iDaysSinceRun < 7 and ($iDaysSinceRun + ($line_7day - 1)) < 7 Then
-					$iWeeklyTimeMin = $line_wMin ;set global value
-					ConsoleWrite("Same Week. WeeklyTimeMin=" &$iWeeklyTimeMin&@CRLF)
-				EndIf
-			EndIf
-
-			WriteToLog(StringFormat( "Read session data.. (D=%.1fh W=%.1fh)", ($iDailyTimeMin/60), ($iWeeklyTimeMin/60)))
+		if @error Or Not IsArray($aArray) Then
+			MsgBox(0,"File Error", "Can not read temp session file",5,$Form2)
+			ConsoleWrite("!logFile ERROR" &@CRLF)
 		Else
-			ConsoleWrite("!ERROR: file to short"&@CRLF)
+			If (UBound($aArray) >= 5) Then
+				Local $line_dMin = int($aArray[0])	; daily min
+				Local $line_wMin = int($aArray[1])	; weekly min
 
+				Local $line_7day = int($aArray[2])	; 1-7 day (stored sun -> sat)
+				Local $line_365d = int($aArray[3])	; 1-366 day
+				Local $line_year = int($aArray[4])	; year 2020
+
+				;test year
+				if $line_year = int(@YEAR) Then
+					$iYearDay = $line_365d ;set global value
+					ConsoleWrite("Same Year. YearDay=" &$iYearDay&@CRLF)
+
+
+					;get daily hour/min
+					If $line_365d = int(@YDAY) Then
+						$iDailyTimeMin = $line_dMin ;set global value
+						ConsoleWrite("Same Day. DailyTimeMin=" &$iDailyTimeMin&@CRLF)
+					EndIf
+
+					;get weekly hour/min
+					local $iDaysSinceRun = int(@YDAY) - $line_365d
+					if $iDaysSinceRun < 7 and ($iDaysSinceRun + ($line_7day - 1)) < 7 Then
+						$iWeeklyTimeMin = $line_wMin ;set global value
+						ConsoleWrite("Same Week. WeeklyTimeMin=" &$iWeeklyTimeMin&@CRLF)
+					EndIf
+				EndIf
+
+				WriteToLog(StringFormat( "Read session data.. (D=%.1fh W=%.1fh)", ($iDailyTimeMin/60), ($iWeeklyTimeMin/60)))
+			Else
+				ConsoleWrite("!ERROR: log file to short"&@CRLF)
+
+			EndIf
 		EndIf
 	EndIf
 
@@ -404,6 +418,25 @@ Func WriteToLog($sReason, $writeToLog = True)
 EndFunc
 #EndRegion
 
+
+Func _GDIPlus_GraphicsGetDPIRatio($iDPIDef = 96)
+    _GDIPlus_Startup()
+    Local $hGfx = _GDIPlus_GraphicsCreateFromHWND(0)
+    If @error Then Return SetError(1, @extended, 0)
+    Local $aResult
+    #forcedef $__g_hGDIPDll, $ghGDIPDll
+
+    $aResult = DllCall($__g_hGDIPDll, "int", "GdipGetDpiX", "handle", $hGfx, "float*", 0)
+
+    If @error Then Return SetError(2, @extended, 0)
+    Local $iDPI = $aResult[2]
+    Local $aresults[2] = [$iDPIDef / $iDPI, $iDPI / $iDPIDef]
+    _GDIPlus_GraphicsDispose($hGfx)
+    _GDIPlus_Shutdown()
+    Return $aresults
+EndFunc   ;==>_GDIPlus_GraphicsGetDPIRatio
+
+
 Func CLOSE_UI()
 	_WinAPI_UnregisterPowerSettingNotification($powerID)
 	Write_Session_ToTempFile()
@@ -450,3 +483,5 @@ While 1
 	UpdateTimmers()
 	Sleep(10000) ;10 second
 WEnd
+
+GUIDelete($Form2)
